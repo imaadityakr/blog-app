@@ -5,9 +5,11 @@ from django.core.paginator import Paginator, EmptyPage,\
 from .models import Post, Comment
 from taggit.models import Tag
 
-from .forms import EmailPostForm, CommentForm
-from django.core.mail import send_mail
+from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
+from django.contrib.postgres.search import TrigramSimilarity
 
+from .forms import EmailPostForm, CommentForm, SearchForm
+from django.core.mail import send_mail
 
 def post_list(request, tag_slug=None):
     object_list = Post.published.all()
@@ -32,7 +34,6 @@ def post_list(request, tag_slug=None):
                  {'page': page,
                   'posts': posts,
                   'tag': tag})
-
 
 def post_detail(request, year, month, day, post):
     post = get_object_or_404(Post, slug=post,
@@ -118,3 +119,20 @@ def post_share(request, post_id):
 	return render(request, 'blog/post/share.html', {'post': post,
 					'form': form,
 					'sent': sent})
+
+def post_search(request):
+    form = SearchForm()
+    query = None
+    results = []
+    if 'query' in request.GET:
+        form = SearchForm(request.GET)
+        if form.is_valid():
+            query = form.cleaned_data['query']
+            results = Post.published.annotate(
+                similarity=TrigramSimilarity('title', query),
+            ).filter(similarity__gt=0.1).order_by('-similarity')
+    return render(request,
+                  'blog/post/search.html',
+                  {'form': form,
+                   'query': query,
+                   'results': results})
